@@ -17,6 +17,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let powerManager = PowerManager()
     let batteryMonitor = BatteryMonitor()
     let watchdog = ProcessWatchdog()
+    let sessionManager = SessionManager()
     let sessionTimer = TimerManager()
 
     private var statusItem: NSStatusItem!
@@ -28,7 +29,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusItem()
         setupPanel()
         setupBindings()
-        // Initialize watchdog with default processes
+        setupKeyboardShortcuts()
         watchdog.setProcesses(appState.watchedProcesses)
         batteryMonitor.start()
     }
@@ -56,6 +57,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             button.contentTintColor = nil
         }
+    }
+
+    // MARK: - Keyboard Shortcuts
+
+    private var shortcutMonitor: Any?
+
+    private func setupKeyboardShortcuts() {
+        shortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self else { return event }
+            let cmd = event.modifierFlags.contains(.command)
+            let chars = event.charactersIgnoringModifiers?.lowercased()
+
+            if cmd && chars == "i" {
+                self.appState.toggle()
+                if self.isPanelShown { self.closePanel() }
+                return nil
+            }
+
+            if cmd && chars == "q" {
+                self.cleanQuit()
+                return nil
+            }
+
+            return event
+        }
+    }
+
+    // MARK: - Clean Quit
+
+    private func cleanQuit() {
+        sessionManager.stop()
+        sessionTimer.stop()
+        powerManager.releaseAll()
+        NSApplication.shared.terminate(nil)
     }
 
     // MARK: - Panel
@@ -97,7 +132,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let buttonRect = button.convert(button.bounds, to: nil)
         let screenRect = button.window?.convertToScreen(buttonRect) ?? .zero
 
-        let panelSize = panel.contentView?.fittingSize ?? CGSize(width: 320, height: 480)
+        let panelSize = panel.contentView?.fittingSize ?? CGSize(width: 320, height: 580)
         let x = screenRect.midX - panelSize.width / 2
         let y = screenRect.minY - panelSize.height - 4
 
@@ -121,25 +156,58 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] _ in self?.tick() }
             .store(in: &cancellables)
 
-        // Sync watched processes to watchdog
         appState.onWatchedProcessesChanged = { [weak self] processes in
             self?.watchdog.setProcesses(processes)
         }
 
-        appState.onActivate = { [weak self] duration in
-            guard let self = self else { return }
-            self.powerManager.preventSleep()
-            self.updateIcon()
-            if let d = duration {
-                self.sessionTimer.start(duration: d)
+        appState.onActivate = { [weak self] mode in
+            guard let self = self, let mode = mode else { return }
+            switch mode {
+            case .indefinite:
+                self.sessionManager.start(.indefinite, using: self.powerManager)
+
+            case .timed:
+                let duration = self.appState.sessionTimedDuration
+                self.appState.activeUntil = Date().addingTimeInterval(duration)
+                self.sessionTimer.start(duration: duration)
+                self.sessionManager.start(.timed(duration), using: self.powerManager)
+
+            case .untilTime:
+                let date = self.appState.sessionUntilTime
+                self.appState.activeUntil = date
+                self.sessionTimer.start(until: date)
+                self.sessionManager.start(.untilTime(date), using: self.powerManager)
+
+            case .whileAppRunning:
+                guard let bundleID = self.appState.targetAppBundleID,
+                      let name = self.appState.targetAppName else { return }
+                self.sessionManager.start(.whileAppRunning(bundleID: bundleID, appName: name),
+                                          using: self.powerManager)
+
+            case .whileFileDownloads:
+                guard let path = self.appState.downloadFilePath else { return }
+                self.sessionManager.start(.whileFileDownloads(path: path),
+                                          using: self.powerManager)
             }
+
+            self.updateIcon()
+            if self.isPanelShown { self.closePanel() }
         }
 
         appState.onDeactivate = { [weak self] in
             guard let self = self else { return }
-            self.powerManager.releaseAll()
             self.sessionTimer.stop()
+            self.sessionManager.stop()
+            self.powerManager.releaseAll()
             self.updateIcon()
+        }
+
+        sessionTimer.onTimerEnd = { [weak self] in
+            self?.appState.deactivate()
+        }
+
+        sessionManager.onStop = { [weak self] in
+            self?.appState.deactivate()
         }
 
         batteryMonitor.onBatteryUpdate = { [weak self] level, charging in
@@ -150,16 +218,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard self.appState.isActive else { return }
 
             if self.appState.batterySafeguardEnabled && !charging && level <= self.appState.batteryThreshold {
-                // Battery low and not charging: allow display sleep but keep system awake
                 self.powerManager.displaySleepAllowed = true
             } else if charging || level > self.appState.batteryThreshold {
-                // Charging or above threshold: keep display awake
                 self.powerManager.displaySleepAllowed = false
             }
-        }
-
-        sessionTimer.onTimerEnd = { [weak self] in
-            self?.appState.deactivate()
         }
 
         watchdog.onAllFinished = { [weak self] in
@@ -171,7 +233,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func tick() {
-        // Sync watchdog state to appState for the UI
         appState.allProcessesFinished = watchdog.allFinished
         appState.processStatus = watchdog.status
     }
@@ -180,5 +241,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidResignActive(_ notification: Notification) {
         if isPanelShown { closePanel() }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        cleanQuit()
     }
 }

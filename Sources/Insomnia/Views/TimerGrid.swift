@@ -18,20 +18,23 @@ struct TimerGrid: View {
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 5), spacing: 6) {
                 ForEach(timers, id: \.duration) { t in
+                    let isTimedActive = appState.isActive
+                        && appState.activeUntil != nil
+                        && abs(Double(appState.remainingSeconds) - t.duration) < 2
                     Button(t.label) {
                         withAnimation(.spring(response: 0.4)) {
-                            appState.activateTimed(duration: t.duration)
+                            appState.sessionMode = .timed
+                            appState.sessionTimedDuration = t.duration
+                            appState.startSession()
                         }
                     }
-                    .buttonStyle(TimerButtonStyle(
-                        isActive: appState.isActive && appState.activeUntil != nil
-                            && abs(Double(appState.remainingSeconds) - t.duration) < 2
-                    ))
+                    .buttonStyle(TimerButtonStyle(isActive: isTimedActive))
                 }
 
                 Button("∞") {
                     withAnimation(.spring(response: 0.4)) {
-                        appState.activateIndefinite()
+                        appState.sessionMode = .indefinite
+                        appState.startSession()
                     }
                 }
                 .buttonStyle(TimerButtonStyle(

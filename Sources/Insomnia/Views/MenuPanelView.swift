@@ -9,25 +9,25 @@ struct MenuPanelView: View {
 
             GlassDivider()
 
-            ToggleSection()
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    SessionConfigView()
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
 
-            GlassDivider()
+                    GlassDivider()
 
-            TimerGrid()
+                    AutomationSection()
 
-            GlassDivider()
+                    GlassDivider()
 
-            AutomationSection()
-
-            GlassDivider()
-
-            footerView
+                    footerView
+                }
+            }
         }
         .frame(width: 320)
         .background(
-            VisualEffect(material: .menu, blendingMode: .behindWindow)
+            VisualEffectView(material: .menu, blendingMode: .behindWindow)
                 .ignoresSafeArea()
         )
         .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -76,6 +76,10 @@ struct MenuPanelView: View {
 
             Spacer()
 
+            Text("⌘Q")
+                .font(.system(.caption2, design: .rounded, weight: .medium))
+                .foregroundColor(.secondary.opacity(0.5))
+
             Button("Quit") {
                 NSApplication.shared.terminate(nil)
             }
@@ -92,7 +96,7 @@ struct MenuPanelView: View {
     }
 }
 
-struct VisualEffect: NSViewRepresentable {
+struct VisualEffectView: NSViewRepresentable {
     var material: NSVisualEffectView.Material
     var blendingMode: NSVisualEffectView.BlendingMode
 

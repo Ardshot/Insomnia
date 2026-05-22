@@ -15,7 +15,23 @@ class TimerManager {
 
     func start(duration: TimeInterval) {
         stop()
+        guard duration > 0 else { onTimerEnd?(); return }
         endDate = Date().addingTimeInterval(duration)
+        schedule()
+    }
+
+    func start(until date: Date) {
+        let d = date.timeIntervalSinceNow
+        start(duration: max(0, d))
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+        endDate = nil
+    }
+
+    private func schedule() {
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             if self.remaining <= 0 {
@@ -23,12 +39,6 @@ class TimerManager {
                 self.onTimerEnd?()
             }
         }
-    }
-
-    func stop() {
-        timer?.invalidate()
-        timer = nil
-        endDate = nil
     }
 
     deinit { stop() }

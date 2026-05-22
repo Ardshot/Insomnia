@@ -6,6 +6,14 @@ extension Color {
     static let calmGreen = Color(red: 0.18, green: 0.80, blue: 0.44)
     static let deepPurple = Color(red: 0.40, green: 0.23, blue: 0.72)
     static let mutedText = Color(nsColor: .secondaryLabelColor)
+    static let rose = Color(red: 0.90, green: 0.27, blue: 0.44)
+    static let accentStart = Color(red: 0.38, green: 0.20, blue: 0.87)
+    static let accentEnd = Color(red: 0.15, green: 0.68, blue: 0.66)
+    static let accentGradient = LinearGradient(
+        colors: [Color.accentStart, Color.accentEnd],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
 }
 
 extension View {
