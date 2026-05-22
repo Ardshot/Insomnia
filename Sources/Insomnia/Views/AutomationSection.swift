@@ -23,6 +23,7 @@ struct AutomationSection: View {
                         Text("\(appState.batteryLevel)%")
                             .font(.system(.caption, design: .rounded, weight: .semibold))
                             .foregroundColor(appState.isCharging ? .calmGreen : .activeYellow)
+                            .contentTransition(.numericText())
                         Text(appState.isCharging ? "• Charging" : "• On Battery")
                             .font(.system(.caption, design: .rounded))
                             .foregroundColor(.secondary)
@@ -50,8 +51,9 @@ struct AutomationSection: View {
                 } else {
                     ForEach(appState.watchedProcesses, id: \.self) { name in
                         HStack(spacing: 8) {
+                            let running = appState.processStatus[name] ?? true
                             Circle()
-                                .fill(appState.allProcessesFinished ? Color.calmGreen : Color.activeYellow)
+                                .fill(running ? Color.activeYellow : Color.calmGreen)
                                 .frame(width: 7, height: 7)
 
                             Text(name)
@@ -60,11 +62,21 @@ struct AutomationSection: View {
 
                             Spacer()
 
-                            if appState.allProcessesFinished {
+                            if !running {
                                 Text("done")
                                     .font(.system(.caption, design: .rounded, weight: .medium))
                                     .foregroundColor(.calmGreen)
                             }
+
+                            Button {
+                                appState.removeProcess(name)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary.opacity(0.6))
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove \(name)")
                         }
                         .padding(.leading, 4)
                     }
@@ -76,16 +88,11 @@ struct AutomationSection: View {
                         .textFieldStyle(.plain)
                         .font(.system(.subheadline, design: .rounded, weight: .medium))
                         .monospaced()
+                        .onSubmit { addProcess() }
 
-                    Button {
-                        let name = newProcess.trimmingCharacters(in: .whitespaces)
-                        guard !name.isEmpty else { return }
-                        if !appState.watchedProcesses.contains(name) {
-                            appState.watchedProcesses.append(name)
-                        }
-                        newProcess = ""
-                    } label: {
+                    Button(action: addProcess) {
                         Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 18))
                             .foregroundColor(.calmGreen)
                     }
                     .buttonStyle(.plain)
@@ -100,5 +107,10 @@ struct AutomationSection: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    private func addProcess() {
+        appState.addProcess(newProcess)
+        newProcess = ""
     }
 }

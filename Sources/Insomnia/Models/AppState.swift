@@ -7,8 +7,15 @@ class AppState: ObservableObject {
     @Published var batterySafeguardEnabled = true
     @Published var batteryLevel: Int = 100
     @Published var isCharging = true
-    @Published var watchedProcesses: [String] = ["npm", "python"]
+    @Published var watchedProcesses: [String] = ["npm", "python"] {
+        didSet { onWatchedProcessesChanged?(watchedProcesses) }
+    }
+    @Published var processStatus: [String: Bool] = [:]
     @Published var allProcessesFinished = true
+
+    var onWatchedProcessesChanged: (([String]) -> Void)?
+    var onActivate: ((TimeInterval?) -> Void)?
+    var onDeactivate: (() -> Void)?
 
     var isTimed: Bool { isActive && activeUntil != nil }
     var isIndefinite: Bool { isActive && activeUntil == nil }
@@ -27,10 +34,6 @@ class AppState: ObservableObject {
         if m > 0 { return String(format: "%d:%02d", m, sec) }
         return String(format: "0:%02d", sec)
     }
-
-    var onActivate: ((TimeInterval?) -> Void)?
-    var onDeactivate: (() -> Void)?
-    var onStartTimer: ((TimeInterval) -> Void)?
 
     func activateIndefinite() {
         isActive = true
@@ -53,5 +56,19 @@ class AppState: ObservableObject {
     func toggle() {
         if isActive { deactivate() }
         else { activateIndefinite() }
+    }
+
+    func addProcess(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !watchedProcesses.contains(trimmed) else { return }
+        var updated = watchedProcesses
+        updated.append(trimmed)
+        watchedProcesses = updated
+    }
+
+    func removeProcess(_ name: String) {
+        var updated = watchedProcesses
+        updated.removeAll { $0 == name }
+        watchedProcesses = updated
     }
 }

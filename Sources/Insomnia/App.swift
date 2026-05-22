@@ -28,6 +28,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusItem()
         setupPanel()
         setupBindings()
+        // Initialize watchdog with default processes
+        watchdog.setProcesses(appState.watchedProcesses)
         batteryMonitor.start()
     }
 
@@ -49,6 +51,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: appState.isActive ? "Active" : "Inactive")
         image?.isTemplate = !appState.isActive
         button.image = image
+        if appState.isActive {
+            button.contentTintColor = .systemYellow
+        } else {
+            button.contentTintColor = nil
+        }
     }
 
     // MARK: - Panel
@@ -114,6 +121,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] _ in self?.tick() }
             .store(in: &cancellables)
 
+        // Sync watched processes to watchdog
+        appState.onWatchedProcessesChanged = { [weak self] processes in
+            self?.watchdog.setProcesses(processes)
+        }
+
         appState.onActivate = { [weak self] duration in
             guard let self = self else { return }
             self.powerManager.preventSleep()
@@ -135,9 +147,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self.appState.batteryLevel = level
             self.appState.isCharging = charging
 
+            guard self.appState.isActive else { return }
+
             if self.appState.batterySafeguardEnabled && !charging && level <= self.appState.batteryThreshold {
+                // Battery low and not charging: allow display sleep but keep system awake
                 self.powerManager.displaySleepAllowed = true
-            } else if charging {
+            } else if charging || level > self.appState.batteryThreshold {
+                // Charging or above threshold: keep display awake
                 self.powerManager.displaySleepAllowed = false
             }
         }
@@ -155,10 +171,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func tick() {
-        // Update the icon and panel when state changes
-        if appState.isActive {
-            // Force UI refresh for countdown display
-        }
+        // Sync watchdog state to appState for the UI
+        appState.allProcessesFinished = watchdog.allFinished
+        appState.processStatus = watchdog.status
     }
 
     // MARK: - NSApplicationDelegate

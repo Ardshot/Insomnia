@@ -28,11 +28,14 @@ class BatteryMonitor {
         guard let desc = IOPSGetPowerSourceDescription(blob, first)?.takeUnretainedValue()
                 as? [String: Any] else { return }
 
-        let level = desc["BatteryCurrentCapacity" as String] as? Int ?? 100
-        let psState = desc["Power Source State" as String] as? String
+        let current = desc["CurrentCapacity"] as? Int ?? 0
+        let maxCap = desc["MaxCapacity"] as? Int ?? 100
+        let percent = maxCap > 0 ? (current * 100) / maxCap : 0
+
+        let psState = desc["Power Source State"] as? String ?? ""
         let isCharging = psState == "AC Power"
 
-        onBatteryUpdate?(level, isCharging)
+        onBatteryUpdate?(percent, isCharging)
     }
 
     deinit { stop() }
