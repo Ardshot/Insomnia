@@ -6,8 +6,6 @@ struct MenuPanelView: View {
     @State private var showAppPicker = false
     @State private var runningApps = NSWorkspace.shared.runningApplications
         .filter { $0.activationPolicy == .regular }
-    @State private var tick = Date()
-
     private let tickTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     private let timers: [(label: String, duration: TimeInterval)] = [
@@ -58,9 +56,10 @@ struct MenuPanelView: View {
                 pulseGlow.toggle()
             }
         }
-        .onReceive(tickTimer) { now in
-            tick = now
-            if appState.isActive && appState.isTimed && appState.remainingSeconds <= 0 {
+        .onReceive(tickTimer) { _ in
+            guard appState.isActive else { return }
+            appState.objectWillChange.send()
+            if appState.isTimed && appState.remainingSeconds <= 0 {
                 appState.deactivate()
             }
         }
