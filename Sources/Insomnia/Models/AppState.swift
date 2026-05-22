@@ -5,7 +5,7 @@ enum SessionMode: String, CaseIterable {
     case timed = "Timed"
     case untilTime = "Until"
     case whileAppRunning = "App Open"
-    case whileFileDownloads = "Download"
+    case whileFileDownloads = "Downloading"
 
     var symbol: String {
         switch self {
@@ -53,7 +53,6 @@ class AppState: ObservableObject {
         return String(format: "0:%02d", sec)
     }
 
-    // Start the currently configured mode
     func startCurrent() {
         isActive = true
         onActivate?(sessionMode)

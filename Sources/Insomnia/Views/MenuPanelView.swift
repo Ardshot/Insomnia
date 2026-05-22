@@ -4,9 +4,11 @@ struct MenuPanelView: View {
     @EnvironmentObject var appState: AppState
     @State private var pulseGlow = false
     @State private var showAppPicker = false
-    @State private var showFilePicker = false
     @State private var runningApps = NSWorkspace.shared.runningApplications
         .filter { $0.activationPolicy == .regular }
+    @State private var tick = Date()
+
+    private let tickTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     private let timers: [(label: String, duration: TimeInterval)] = [
         ("15m", 900), ("30m", 1800), ("1h", 3600), ("2h", 7200),
@@ -15,27 +17,33 @@ struct MenuPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-
             GlassDivider()
 
-            toggleCard
+            heroCard
                 .padding(.horizontal, 16)
-                .padding(.vertical, 16)
+                .padding(.vertical, 14)
 
             GlassDivider()
 
-            modePicker
+            sessionSelector
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
 
             configPanel
                 .padding(.horizontal, 16)
-                .padding(.top, 8)
+                .padding(.top, 6)
+
+            GlassDivider()
+                .padding(.top, 6)
+
+            quickTimers
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
 
             Spacer(minLength: 0)
 
             quitButton
-                .padding(.bottom, 10)
+                .padding(.bottom, 8)
                 .padding(.trailing, 16)
         }
         .frame(width: 300)
@@ -50,6 +58,12 @@ struct MenuPanelView: View {
                 pulseGlow.toggle()
             }
         }
+        .onReceive(tickTimer) { now in
+            tick = now
+            if appState.isActive && appState.isTimed && appState.remainingSeconds <= 0 {
+                appState.deactivate()
+            }
+        }
     }
 
     // MARK: - Header
@@ -61,16 +75,15 @@ struct MenuPanelView: View {
 
             Spacer()
 
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Circle()
                     .fill(appState.isActive ? Color.activeYellow : Color.secondary)
-                    .frame(width: 8, height: 8)
-
+                    .frame(width: 7, height: 7)
                 Text(appState.isActive ? "Awake" : "Sleeping")
                     .font(.system(.caption, design: .rounded, weight: .medium))
                     .foregroundColor(appState.isActive ? .activeYellow : .secondary)
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 9)
             .padding(.vertical, 4)
             .background(
                 Capsule()
@@ -78,103 +91,86 @@ struct MenuPanelView: View {
             )
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 10)
     }
 
-    // MARK: - Toggle Card
+    // MARK: - Hero Card
 
-    private var toggleCard: some View {
+    private var heroCard: some View {
         Button {
             withAnimation(.spring(response: 0.4)) {
                 appState.toggle()
             }
         } label: {
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 Image(systemName: appState.isActive ? "eye.fill" : "eye.slash")
-                    .font(.system(size: 44))
+                    .font(.system(size: 40))
                     .foregroundColor(appState.isActive ? .activeYellow : .secondary)
 
                 Text(appState.isActive ? "Insomnia is On" : "Insomnia is Off")
                     .font(.system(.title3, design: .rounded, weight: .semibold))
 
                 if appState.isActive {
-                    HStack(spacing: 6) {
-                        Image(systemName: "clock")
-                            .font(.caption)
-                        if appState.isTimed {
-                            Text(appState.remainingDisplay)
-                                .font(.system(.title2, design: .rounded, weight: .bold).monospacedDigit())
-                                .contentTransition(.numericText())
-                        } else {
-                            Text("Indefinite")
-                                .font(.system(.subheadline, design: .rounded))
-                        }
+                    if appState.isTimed {
+                        Text(appState.remainingDisplay)
+                            .font(.system(.title, design: .rounded, weight: .bold).monospacedDigit())
+                            .foregroundColor(.activeYellow)
+                            .contentTransition(.numericText())
+                    } else {
+                        Text("Indefinite")
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundColor(.activeYellow)
                     }
-                    .foregroundColor(.activeYellow)
 
-                    Text("Tap to let your Mac sleep")
+                    Text("Tap to let Mac sleep")
                         .font(.system(.caption, design: .rounded))
                         .foregroundColor(.secondary)
                 } else {
-                    Text("Tap to keep your Mac awake")
+                    Text("Tap to keep Mac awake")
                         .font(.system(.caption, design: .rounded))
                         .foregroundColor(.secondary)
                 }
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 28)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(.ultraThinMaterial)
-            )
+            .padding(.vertical, 22)
+            .glassCard(cornerRadius: 14)
             .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [.white.opacity(0.2), .white.opacity(0.05)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
+                RoundedRectangle(cornerRadius: 14)
                     .stroke(
                         Color.activeYellow.opacity(appState.isActive ? (pulseGlow ? 0.5 : 0.15) : 0),
                         lineWidth: 1.5
                     )
             )
             .shadow(
-                color: Color.activeYellow.opacity(appState.isActive ? (pulseGlow ? 0.35 : 0.05) : 0),
-                radius: 24
+                color: Color.activeYellow.opacity(appState.isActive ? (pulseGlow ? 0.3 : 0.05) : 0),
+                radius: 20
             )
-            .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - Mode Picker
+    // MARK: - Session Selector Grid
 
-    private var modePicker: some View {
-        HStack(spacing: 4) {
-            ForEach(SessionMode.allCases, id: \.self) { mode in
+    private var sessionSelector: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+            ForEach(Array(SessionMode.allCases.enumerated()), id: \.offset) { _, mode in
                 Button {
                     appState.sessionMode = mode
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 5) {
                         Image(systemName: mode.symbol)
-                            .font(.system(size: 10))
+                            .font(.system(size: 11))
                         Text(mode.rawValue)
-                            .font(.system(.caption2, design: .rounded, weight: .medium))
+                            .font(.system(.caption, design: .rounded, weight: .medium))
+                            .lineLimit(1)
                     }
-                    .foregroundColor(appState.sessionMode == mode ? .white : .secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
+                    .foregroundColor(appState.sessionMode == mode ? .white : .primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
                     .background(
-                        Capsule()
+                        RoundedRectangle(cornerRadius: 8)
                             .fill(appState.sessionMode == mode
-                                  ? Color.activeYellow.opacity(0.8)
+                                  ? Color.activeYellow.opacity(0.85)
                                   : Color(nsColor: .controlBackgroundColor))
                     )
                 }
@@ -207,50 +203,41 @@ struct MenuPanelView: View {
                 Button(t.label) {
                     appState.timedDuration = t.duration
                 }
-                .buttonStyle(TimerButtonStyle(isActive: appState.timedDuration == t.duration,
-                                              color: .calmGreen))
+                .buttonStyle(TimerButtonStyle(
+                    isActive: appState.timedDuration == t.duration,
+                    color: .calmGreen
+                ))
             }
-
-            Text("\(Int(appState.timedDuration / 60))m")
-                .font(.system(.caption, design: .rounded, weight: .medium))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(
-                    Capsule()
-                        .fill(Color(nsColor: .controlBackgroundColor))
-                )
         }
-        .padding(.bottom, 12)
+        .padding(.bottom, 4)
     }
 
     private var untilConfig: some View {
         HStack {
-            DatePicker("", selection: $appState.untilTime, displayedComponents: .hourAndMinute)
+            DatePicker("Until", selection: $appState.untilTime, displayedComponents: .hourAndMinute)
                 .datePickerStyle(.compact)
                 .labelsHidden()
-                .scaleEffect(0.85)
-
             Text("today")
                 .font(.system(.caption, design: .rounded))
                 .foregroundColor(.secondary)
-
             Spacer()
         }
-        .padding(.bottom, 12)
+        .padding(.bottom, 4)
     }
 
     private var appConfig: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        HStack {
             if let name = appState.targetAppName {
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.calmGreen)
                         .font(.caption)
                     Text(name)
                         .font(.system(.caption, design: .rounded, weight: .medium))
+                        .lineLimit(1)
                     Button { appState.targetAppName = nil; appState.targetBundleID = nil } label: {
                         Image(systemName: "x.circle.fill")
+                            .font(.caption)
                             .foregroundColor(.secondary)
                     }
                     .buttonStyle(.plain)
@@ -264,7 +251,7 @@ struct MenuPanelView: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "magnifyingglass")
-                    Text("Choose an app…")
+                    Text("Choose app…")
                 }
                 .font(.system(.caption, design: .rounded))
                 .foregroundColor(.secondary)
@@ -279,13 +266,15 @@ struct MenuPanelView: View {
             .popover(isPresented: $showAppPicker, arrowEdge: .trailing) {
                 appPickerList
             }
+
+            Spacer()
         }
-        .padding(.bottom, 12)
+        .padding(.bottom, 4)
     }
 
     private var appPickerList: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 ForEach(runningApps, id: \.processIdentifier) { app in
                     Button {
                         appState.targetBundleID = app.bundleIdentifier
@@ -296,28 +285,28 @@ struct MenuPanelView: View {
                             if let icon = app.icon {
                                 Image(nsImage: icon)
                                     .resizable()
-                                    .frame(width: 18, height: 18)
+                                    .frame(width: 16, height: 16)
                             }
                             Text(app.localizedName ?? app.bundleIdentifier ?? "Unknown")
                                 .font(.system(.caption, design: .rounded))
                             Spacer()
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
             }
         }
-        .frame(width: 200, height: min(CGFloat(runningApps.count) * 32 + 8, 250))
+        .frame(width: 200, height: min(CGFloat(runningApps.count) * 28 + 8, 220))
         .padding(4)
     }
 
     private var downloadConfig: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        HStack {
             if let name = appState.downloadName {
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     Image(systemName: "doc.fill")
                         .foregroundColor(.calmGreen)
                         .font(.caption)
@@ -327,6 +316,7 @@ struct MenuPanelView: View {
                         .truncationMode(.middle)
                     Button { appState.downloadPath = nil; appState.downloadName = nil } label: {
                         Image(systemName: "x.circle.fill")
+                            .font(.caption)
                             .foregroundColor(.secondary)
                     }
                     .buttonStyle(.plain)
@@ -346,7 +336,7 @@ struct MenuPanelView: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "folder.badge.plus")
-                    Text(appState.downloadName ?? "Choose a file…")
+                    Text(appState.downloadName ?? "Choose file…")
                 }
                 .font(.system(.caption, design: .rounded))
                 .foregroundColor(.secondary)
@@ -358,8 +348,37 @@ struct MenuPanelView: View {
                 )
             }
             .buttonStyle(.plain)
+
+            Spacer()
         }
-        .padding(.bottom, 12)
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - Quick Timers
+
+    private var quickTimers: some View {
+        HStack(spacing: 6) {
+            ForEach(timers, id: \.duration) { t in
+                let isActive = appState.isActive && appState.isTimed
+                    && abs(appState.remainingSeconds - Int(t.duration)) < 2
+                Button(t.label) {
+                    withAnimation(.spring(response: 0.3)) {
+                        appState.activateTimed(duration: t.duration)
+                    }
+                }
+                .buttonStyle(TimerButtonStyle(isActive: isActive))
+            }
+
+            Button("∞") {
+                withAnimation(.spring(response: 0.3)) {
+                    appState.activateIndefinite()
+                }
+            }
+            .buttonStyle(TimerButtonStyle(
+                isActive: appState.isIndefinite,
+                color: .deepPurple
+            ))
+        }
     }
 
     // MARK: - Quit Button
@@ -367,7 +386,6 @@ struct MenuPanelView: View {
     private var quitButton: some View {
         HStack {
             Spacer()
-
             Button {
                 NSApplication.shared.terminate(nil)
             } label: {
@@ -380,7 +398,7 @@ struct MenuPanelView: View {
                 }
                 .foregroundColor(.secondary)
                 .padding(.horizontal, 10)
-                .padding(.vertical, 5)
+                .padding(.vertical, 4)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
                         .fill(Color(nsColor: .controlBackgroundColor))
