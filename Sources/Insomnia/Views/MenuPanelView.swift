@@ -2,39 +2,51 @@ import SwiftUI
 
 struct MenuPanelView: View {
     @EnvironmentObject var appState: AppState
+    @State private var pulseGlow = false
+
+    private let timers: [(label: String, duration: TimeInterval)] = [
+        ("15m", 900), ("30m", 1800), ("1h", 3600), ("2h", 7200),
+    ]
 
     var body: some View {
         VStack(spacing: 0) {
-            headerView
+            header
 
             GlassDivider()
 
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    SessionConfigView()
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+            toggleCard
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
 
-                    GlassDivider()
+            GlassDivider()
 
-                    AutomationSection()
+            timerSection
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
 
-                    GlassDivider()
+            Spacer()
 
-                    footerView
-                }
-            }
+            quitButton
+                .padding(.bottom, 10)
+                .padding(.trailing, 16)
         }
-        .frame(width: 320)
+        .frame(width: 300)
         .background(
             VisualEffectView(material: .menu, blendingMode: .behindWindow)
                 .ignoresSafeArea()
         )
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.15), radius: 30, y: 8)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
+                pulseGlow.toggle()
+            }
+        }
     }
 
-    private var headerView: some View {
+    // MARK: - Header
+
+    private var header: some View {
         HStack {
             Text("Insomnia")
                 .font(.system(.headline, design: .rounded, weight: .bold))
@@ -61,38 +73,138 @@ struct MenuPanelView: View {
         .padding(.vertical, 12)
     }
 
-    private var footerView: some View {
-        HStack(spacing: 6) {
-            Image(systemName: appState.isCharging ? "bolt.fill" : "battery.25")
-                .font(.system(size: 10))
-                .foregroundColor(appState.isCharging ? .calmGreen : .activeYellow)
+    // MARK: - Toggle Card
 
-            Text("\(appState.batteryLevel)%")
-                .font(.system(.caption, design: .rounded, weight: .medium))
+    private var toggleCard: some View {
+        Button {
+            withAnimation(.spring(response: 0.4)) {
+                appState.toggle()
+            }
+        } label: {
+            VStack(spacing: 10) {
+                Image(systemName: appState.isActive ? "eye.fill" : "eye.slash")
+                    .font(.system(size: 44))
+                    .foregroundColor(appState.isActive ? .activeYellow : .secondary)
 
-            Text(appState.isCharging ? "• Power Adapter" : "• Battery")
-                .font(.system(.caption, design: .rounded))
+                Text(appState.isActive ? "Insomnia is On" : "Insomnia is Off")
+                    .font(.system(.title3, design: .rounded, weight: .semibold))
+
+                if appState.isActive {
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock")
+                            .font(.caption)
+                        if appState.isTimed {
+                            Text(appState.remainingDisplay)
+                                .font(.system(.title2, design: .rounded, weight: .bold).monospacedDigit())
+                                .contentTransition(.numericText())
+                        } else {
+                            Text("Indefinite")
+                                .font(.system(.subheadline, design: .rounded))
+                        }
+                    }
+                    .foregroundColor(.activeYellow)
+
+                    Text("Tap to let your Mac sleep")
+                        .font(.system(.caption, design: .rounded))
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("Tap to keep your Mac awake")
+                        .font(.system(.caption, design: .rounded))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 28)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(.ultraThinMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [.white.opacity(0.2), .white.opacity(0.05)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(
+                        Color.activeYellow.opacity(appState.isActive ? (pulseGlow ? 0.5 : 0.15) : 0),
+                        lineWidth: 1.5
+                    )
+            )
+            .shadow(
+                color: Color.activeYellow.opacity(appState.isActive ? (pulseGlow ? 0.35 : 0.05) : 0),
+                radius: 24
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Timer Section
+
+    private var timerSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Quick Timer")
+                .font(.system(.caption, design: .rounded, weight: .semibold))
                 .foregroundColor(.secondary)
 
-            Spacer()
+            HStack(spacing: 6) {
+                ForEach(timers, id: \.duration) { t in
+                    let isActive = appState.isActive && appState.isTimed
+                        && abs(appState.remainingSeconds - Int(t.duration)) < 2
+                    Button(t.label) {
+                        withAnimation(.spring(response: 0.3)) {
+                            appState.activateTimed(duration: t.duration)
+                        }
+                    }
+                    .buttonStyle(TimerButtonStyle(isActive: isActive))
+                }
 
-            Text("⌘Q")
-                .font(.system(.caption2, design: .rounded, weight: .medium))
-                .foregroundColor(.secondary.opacity(0.5))
-
-            Button("Quit") {
-                NSApplication.shared.terminate(nil)
-            }
-            .font(.system(.caption, design: .rounded))
-            .buttonStyle(.plain)
-            .foregroundColor(.secondary)
-            .onHover { h in
-                if h { NSCursor.pointingHand.push() }
-                else { NSCursor.pop() }
+                Button("∞") {
+                    withAnimation(.spring(response: 0.3)) {
+                        appState.activateIndefinite()
+                    }
+                }
+                .buttonStyle(TimerButtonStyle(
+                    isActive: appState.isIndefinite,
+                    color: .deepPurple
+                ))
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+    }
+
+    // MARK: - Quit Button
+
+    private var quitButton: some View {
+        HStack {
+            Spacer()
+
+            Button {
+                NSApplication.shared.terminate(nil)
+            } label: {
+                HStack(spacing: 4) {
+                    Text("Quit Insomnia")
+                        .font(.system(.caption, design: .rounded))
+                    Text("⌘Q")
+                        .font(.system(.caption2, design: .rounded))
+                        .foregroundColor(.secondary.opacity(0.5))
+                }
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                )
+            }
+            .buttonStyle(.plain)
+        }
     }
 }
 

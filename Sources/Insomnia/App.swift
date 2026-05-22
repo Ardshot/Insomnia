@@ -15,9 +15,6 @@ struct InsomniaApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate {
     let appState = AppState()
     let powerManager = PowerManager()
-    let batteryMonitor = BatteryMonitor()
-    let watchdog = ProcessWatchdog()
-    let sessionManager = SessionManager()
     let sessionTimer = TimerManager()
 
     private var statusItem: NSStatusItem!
@@ -30,8 +27,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupPanel()
         setupBindings()
         setupKeyboardShortcuts()
-        watchdog.setProcesses(appState.watchedProcesses)
-        batteryMonitor.start()
     }
 
     // MARK: - Status Bar
@@ -87,7 +82,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Clean Quit
 
     private func cleanQuit() {
-        sessionManager.stop()
         sessionTimer.stop()
         powerManager.releaseAll()
         NSApplication.shared.terminate(nil)
@@ -132,7 +126,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let buttonRect = button.convert(button.bounds, to: nil)
         let screenRect = button.window?.convertToScreen(buttonRect) ?? .zero
 
-        let panelSize = panel.contentView?.fittingSize ?? CGSize(width: 320, height: 580)
+        let panelSize = panel.contentView?.fittingSize ?? CGSize(width: 300, height: 420)
         let x = screenRect.midX - panelSize.width / 2
         let y = screenRect.minY - panelSize.height - 4
 
@@ -151,53 +145,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Bindings
 
     private func setupBindings() {
-        Timer.publish(every: 1, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in self?.tick() }
-            .store(in: &cancellables)
-
-        appState.onWatchedProcessesChanged = { [weak self] processes in
-            self?.watchdog.setProcesses(processes)
-        }
-
-        appState.onActivate = { [weak self] mode in
-            guard let self = self, let mode = mode else { return }
-            switch mode {
-            case .indefinite:
-                self.sessionManager.start(.indefinite, using: self.powerManager)
-
-            case .timed:
-                let duration = self.appState.sessionTimedDuration
-                self.appState.activeUntil = Date().addingTimeInterval(duration)
-                self.sessionTimer.start(duration: duration)
-                self.sessionManager.start(.timed(duration), using: self.powerManager)
-
-            case .untilTime:
-                let date = self.appState.sessionUntilTime
-                self.appState.activeUntil = date
-                self.sessionTimer.start(until: date)
-                self.sessionManager.start(.untilTime(date), using: self.powerManager)
-
-            case .whileAppRunning:
-                guard let bundleID = self.appState.targetAppBundleID,
-                      let name = self.appState.targetAppName else { return }
-                self.sessionManager.start(.whileAppRunning(bundleID: bundleID, appName: name),
-                                          using: self.powerManager)
-
-            case .whileFileDownloads:
-                guard let path = self.appState.downloadFilePath else { return }
-                self.sessionManager.start(.whileFileDownloads(path: path),
-                                          using: self.powerManager)
-            }
-
+        appState.onActivate = { [weak self] duration in
+            guard let self = self else { return }
+            self.powerManager.preventSleep()
             self.updateIcon()
+            if let d = duration {
+                self.sessionTimer.start(duration: d)
+            }
             if self.isPanelShown { self.closePanel() }
         }
 
         appState.onDeactivate = { [weak self] in
             guard let self = self else { return }
             self.sessionTimer.stop()
-            self.sessionManager.stop()
             self.powerManager.releaseAll()
             self.updateIcon()
         }
@@ -205,43 +165,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         sessionTimer.onTimerEnd = { [weak self] in
             self?.appState.deactivate()
         }
-
-        sessionManager.onStop = { [weak self] in
-            self?.appState.deactivate()
-        }
-
-        batteryMonitor.onBatteryUpdate = { [weak self] level, charging in
-            guard let self = self else { return }
-            self.appState.batteryLevel = level
-            self.appState.isCharging = charging
-
-            guard self.appState.isActive else { return }
-
-            if self.appState.batterySafeguardEnabled && !charging && level <= self.appState.batteryThreshold {
-                self.powerManager.displaySleepAllowed = true
-            } else if charging || level > self.appState.batteryThreshold {
-                self.powerManager.displaySleepAllowed = false
-            }
-        }
-
-        watchdog.onAllFinished = { [weak self] in
-            guard let self = self, self.appState.isActive else { return }
-            DispatchQueue.main.async {
-                self.appState.deactivate()
-            }
-        }
-    }
-
-    private func tick() {
-        appState.allProcessesFinished = watchdog.allFinished
-        appState.processStatus = watchdog.status
     }
 
     // MARK: - NSApplicationDelegate
-
-    func applicationDidResignActive(_ notification: Notification) {
-        if isPanelShown { closePanel() }
-    }
 
     func applicationWillTerminate(_ notification: Notification) {
         cleanQuit()

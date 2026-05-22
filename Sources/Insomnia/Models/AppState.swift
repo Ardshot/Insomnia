@@ -1,48 +1,10 @@
 import Foundation
 
-enum SessionMode: String, CaseIterable {
-    case indefinite = "Indefinite"
-    case timed = "Timed"
-    case untilTime = "Until"
-    case whileAppRunning = "App Open"
-    case whileFileDownloads = "Downloading"
-
-    var symbol: String {
-        switch self {
-        case .indefinite: return "infinity"
-        case .timed: return "timer"
-        case .untilTime: return "clock.badge.checkmark"
-        case .whileAppRunning: return "app.badge.checkmark"
-        case .whileFileDownloads: return "arrow.down.doc"
-        }
-    }
-}
-
 class AppState: ObservableObject {
     @Published var isActive = false
     @Published var activeUntil: Date?
-    @Published var sessionMode: SessionMode = .indefinite
-    @Published var sessionTimedDuration: TimeInterval = 1800
-    @Published var sessionUntilTime: Date = Calendar.current.date(
-        bySettingHour: 18, minute: 0, second: 0, of: Date()
-    ) ?? Date().addingTimeInterval(3600)
-    @Published var targetAppBundleID: String?
-    @Published var targetAppName: String?
-    @Published var downloadFilePath: String?
-    @Published var downloadFileName: String?
 
-    @Published var batteryThreshold: Int = 20
-    @Published var batterySafeguardEnabled = true
-    @Published var batteryLevel: Int = 100
-    @Published var isCharging = true
-    @Published var watchedProcesses: [String] = ["npm", "python"] {
-        didSet { onWatchedProcessesChanged?(watchedProcesses) }
-    }
-    @Published var processStatus: [String: Bool] = [:]
-    @Published var allProcessesFinished = true
-
-    var onWatchedProcessesChanged: (([String]) -> Void)?
-    var onActivate: ((SessionMode?) -> Void)?
+    var onActivate: ((TimeInterval?) -> Void)?
     var onDeactivate: (() -> Void)?
 
     var isTimed: Bool { isActive && activeUntil != nil }
@@ -63,9 +25,16 @@ class AppState: ObservableObject {
         return String(format: "0:%02d", sec)
     }
 
-    func startSession() {
+    func activateIndefinite() {
         isActive = true
-        onActivate?(sessionMode)
+        activeUntil = nil
+        onActivate?(nil)
+    }
+
+    func activateTimed(duration: TimeInterval) {
+        isActive = true
+        activeUntil = Date().addingTimeInterval(duration)
+        onActivate?(duration)
     }
 
     func deactivate() {
@@ -76,20 +45,6 @@ class AppState: ObservableObject {
 
     func toggle() {
         if isActive { deactivate() }
-        else { startSession() }
-    }
-
-    func addProcess(_ name: String) {
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, !watchedProcesses.contains(trimmed) else { return }
-        var updated = watchedProcesses
-        updated.append(trimmed)
-        watchedProcesses = updated
-    }
-
-    func removeProcess(_ name: String) {
-        var updated = watchedProcesses
-        updated.removeAll { $0 == name }
-        watchedProcesses = updated
+        else { activateIndefinite() }
     }
 }
