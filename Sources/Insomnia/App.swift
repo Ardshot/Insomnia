@@ -16,6 +16,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let appState = AppState()
     let powerManager = PowerManager()
     let sessionTimer = TimerManager()
+    let sessionManager = SessionManager()
 
     private var statusItem: NSStatusItem!
     private var panel: NSPanel!
@@ -83,6 +84,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func cleanQuit() {
         sessionTimer.stop()
+        sessionManager.stop()
         powerManager.releaseAll()
         NSApplication.shared.terminate(nil)
     }
@@ -145,25 +147,67 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Bindings
 
     private func setupBindings() {
-        appState.onActivate = { [weak self] duration in
-            guard let self = self else { return }
-            self.powerManager.preventSleep()
-            self.updateIcon()
-            if let d = duration {
+        appState.onActivate = { [weak self] mode in
+            guard let self = self, let mode = mode else { return }
+
+            switch mode {
+            case .indefinite:
+                self.sessionManager.startIndefinite(using: self.powerManager)
+                self.appState.activeUntil = nil
+
+            case .timed:
+                let d = self.appState.timedDuration
+                self.sessionManager.startTimed(duration: d, using: self.powerManager)
+                self.appState.activeUntil = Date().addingTimeInterval(d)
+
                 self.sessionTimer.start(duration: d)
+
+            case .untilTime:
+                self.sessionManager.startUntil(date: self.appState.untilTime, using: self.powerManager)
+                self.appState.activeUntil = self.appState.untilTime
+
+                let d = self.appState.untilTime.timeIntervalSinceNow
+                if d > 0 {
+                    self.sessionTimer.start(duration: d)
+                }
+
+            case .whileAppRunning:
+                guard let bundleID = self.appState.targetBundleID else {
+                    self.appState.deactivate()
+                    return
+                }
+                self.appState.activeUntil = nil
+                self.sessionManager.startAppWatch(bundleID: bundleID, using: self.powerManager)
+
+            case .whileFileDownloads:
+                guard let path = self.appState.downloadPath else {
+                    self.appState.deactivate()
+                    return
+                }
+                self.appState.activeUntil = nil
+                self.sessionManager.startFileWatch(path: path, using: self.powerManager)
             }
+
+            self.updateIcon()
             if self.isPanelShown { self.closePanel() }
         }
 
         appState.onDeactivate = { [weak self] in
             guard let self = self else { return }
             self.sessionTimer.stop()
+            self.sessionManager.stop()
             self.powerManager.releaseAll()
             self.updateIcon()
         }
 
         sessionTimer.onTimerEnd = { [weak self] in
             self?.appState.deactivate()
+        }
+
+        sessionManager.onStop = { [weak self] in
+            DispatchQueue.main.async {
+                self?.appState.deactivate()
+            }
         }
     }
 

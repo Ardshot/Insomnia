@@ -1,10 +1,38 @@
 import Foundation
 
+enum SessionMode: String, CaseIterable {
+    case indefinite = "Indefinite"
+    case timed = "Timed"
+    case untilTime = "Until"
+    case whileAppRunning = "App Open"
+    case whileFileDownloads = "Download"
+
+    var symbol: String {
+        switch self {
+        case .indefinite: return "infinity"
+        case .timed: return "timer"
+        case .untilTime: return "clock.badge.checkmark"
+        case .whileAppRunning: return "app.badge.checkmark"
+        case .whileFileDownloads: return "arrow.down.doc"
+        }
+    }
+}
+
 class AppState: ObservableObject {
     @Published var isActive = false
     @Published var activeUntil: Date?
 
-    var onActivate: ((TimeInterval?) -> Void)?
+    @Published var sessionMode: SessionMode = .indefinite
+    @Published var timedDuration: TimeInterval = 1800
+    @Published var untilTime: Date = Calendar.current.date(
+        bySettingHour: 18, minute: 0, second: 0, of: Date()
+    ) ?? Date().addingTimeInterval(3600)
+    @Published var targetBundleID: String?
+    @Published var targetAppName: String?
+    @Published var downloadPath: String?
+    @Published var downloadName: String?
+
+    var onActivate: ((SessionMode?) -> Void)?
     var onDeactivate: (() -> Void)?
 
     var isTimed: Bool { isActive && activeUntil != nil }
@@ -25,16 +53,21 @@ class AppState: ObservableObject {
         return String(format: "0:%02d", sec)
     }
 
-    func activateIndefinite() {
+    // Start the currently configured mode
+    func startCurrent() {
         isActive = true
-        activeUntil = nil
-        onActivate?(nil)
+        onActivate?(sessionMode)
+    }
+
+    func activateIndefinite() {
+        sessionMode = .indefinite
+        startCurrent()
     }
 
     func activateTimed(duration: TimeInterval) {
-        isActive = true
-        activeUntil = Date().addingTimeInterval(duration)
-        onActivate?(duration)
+        sessionMode = .timed
+        timedDuration = duration
+        startCurrent()
     }
 
     func deactivate() {
@@ -45,6 +78,6 @@ class AppState: ObservableObject {
 
     func toggle() {
         if isActive { deactivate() }
-        else { activateIndefinite() }
+        else { startCurrent() }
     }
 }
