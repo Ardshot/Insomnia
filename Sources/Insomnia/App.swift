@@ -24,6 +24,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var isPanelShown = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
         setupStatusItem()
         setupPanel()
         setupBindings()
@@ -83,6 +84,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Clean Quit
 
     private func cleanQuit() {
+        if let monitor = shortcutMonitor {
+            NSEvent.removeMonitor(monitor)
+            shortcutMonitor = nil
+        }
         sessionTimer.stop()
         sessionManager.stop()
         powerManager.releaseAll()

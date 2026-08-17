@@ -7,7 +7,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Insomnia",
-            path: "Sources/Insomnia"
+            path: "Sources/Insomnia",
+            exclude: ["Info.plist", "Insomnia.entitlements"]
         )
     ]
 )

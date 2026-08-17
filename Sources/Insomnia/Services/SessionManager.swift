@@ -32,6 +32,7 @@ class SessionManager {
         guard NSWorkspace.shared.runningApplications.contains(where: {
             $0.bundleIdentifier == bundleID
         }) else {
+            pm.releaseAll()
             DispatchQueue.main.async { [weak self] in self?.onStop?() }
             return
         }
@@ -82,6 +83,10 @@ class SessionManager {
     }
 
     private func checkFile(_ path: String) {
+        if !FileManager.default.fileExists(atPath: path) {
+            onStop?()
+            return
+        }
         let size = sizeOf(path)
         if size == lastSize && size > 0 {
             stableChecks += 1
